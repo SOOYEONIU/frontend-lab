@@ -1,0 +1,7 @@
+packages:
+  - "browser/*"
+  - "javascript/*"
+  - "typescript/*"
+  - "ui/*"
+  - "performance/*"
+  - "testing/*"
