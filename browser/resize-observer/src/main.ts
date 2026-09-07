@@ -1,7 +1,11 @@
 import "./style.css";
 
 const box = document.getElementById("box") as HTMLDivElement;
+const boxContent = document.getElementById("box-content") as HTMLSpanElement;
 const log = document.getElementById("log") as HTMLPreElement;
+const toggleOverflowBtn = document.getElementById(
+  "toggle-overflow",
+) as HTMLButtonElement;
 const [increaseWidthBtn, increaseHeightBtn] =
   document.querySelectorAll<HTMLButtonElement>("#controls button");
 
@@ -41,4 +45,10 @@ increaseWidthBtn.addEventListener("click", () => {
 increaseHeightBtn.addEventListener("click", () => {
   const current = box.getBoundingClientRect().height;
   box.style.height = `${current + 20}px`;
+});
+
+// Case: overflow로 스크롤바가 생겼을 때도 감지되는가?
+// box 자신의 width/height는 그대로 두고, 내부 콘텐츠만 넓혀서 가로 스크롤바를 유발한다.
+toggleOverflowBtn.addEventListener("click", () => {
+  boxContent.classList.toggle("wide");
 });

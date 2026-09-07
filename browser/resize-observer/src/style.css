@@ -7,4 +7,12 @@
     background-color: #f0f0f0;
     width: 100px;
     height: 100px;
+    max-width: 200px;
+    overflow-x: auto;
+}
+
+#box-content.wide {
+    display: inline-block;
+    width: 300px;
+    white-space: nowrap;
 }
