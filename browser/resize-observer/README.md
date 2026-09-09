@@ -136,3 +136,32 @@ ResizeObserver callback도 추가로 발생하지 않았다 (최초 observe 시�
 - overflow로 스크롤바가 생겼다고 해서 항상 ResizeObserver가 반응하는 것은 아니다.
 - overlay 스크롤바(콘텐츠 위에 떠서 공간을 차지하지 않는 방식) 환경에서는 스크롤바 등장이 content box 크기에 영향을 주지 않아 감지되지 않는다.
 - 만약 OS/브라우저 설정이 고전 스크롤바(항상 표시, 공간을 차지하는 방식)라면 content box가 스크롤바 두께만큼 줄어들어 ResizeObserver도 이를 감지할 것으로 예상된다. (환경에 따라 결과가 달라질 수 있는 케이스)
+
+### Case 04. 부모 width 때문에 자식 width가 변경돼도 감지되는가?
+
+#### 예상
+
+- observe 대상(child)이 아니라 그 부모의 크기가 바뀐 것이므로, child 입장에서는 "간접적인" 크기 변화다. 그래도 결과적으로 child의 content box가 실제로 줄어드는 것이므로 감지될 것이라 예상했다.
+
+#### 테스트
+
+`#parent`(width 300px)와 그 안에 `width: 100%`인 `#child`를 배치했다. `child`에는 어떤 스타일 변경 코드도 두지 않았고, `Toggle Parent Width` 버튼을 누르면 오직 `parent`에 `.narrow` 클래스(width 150px)만 토글되도록 했다. `child`에는 별도의 ResizeObserver(`childObserver`)를 붙여 관찰했다.
+
+#### 결과
+
+버튼을 클릭해 `parent`의 width가 300px → 150px로 줄어들자, `child`도 `width: 100%`를 따라 300px → 150px로 줄어들었고, `childObserver`의 callback이 호출되었다.
+
+처음에는 `#parent`에 `transition: width 0.2s`를 걸어뒀는데, 이 상태에서는 버튼 한 번 클릭에 callback이 여러 번(프레임 수만큼) 발생했다. `transition`을 제거하고 다시 테스트하니 클릭 한 번에 callback이 정확히 1번만 발생했다.
+
+#### 이유
+
+ResizeObserver는 "누가/왜 크기를 바꿨는지"가 아니라 observe 중인 요소의 content box가 실제로 달라졌는지만 본다. `child` 자신에게는 어떤 스타일 변경도 가하지 않았지만, 부모의 width 변경이 `width: 100%`를 통해 `child`의 실제 렌더링 크기에 그대로 전파되었고, ResizeObserver는 이 최종 결과(레이아웃에 실제로 반영된 크기 변화)만을 기준으로 감지한다.
+
+transition이 있을 때 callback이 여러 번 발생한 이유도 같은 원리다. transition은 최종 값으로 한 번에 점프하는 게 아니라 0.2초 동안 매 애니메이션 프레임마다 중간값(300 → 290 → ... → 150)을 실제로 레이아웃에 반영한다. 즉 브라우저 입장에서는 크기가 여러 번 연속으로 "실제 변경"된 것이므로, ResizeObserver도 프레임마다 이를 감지해 callback을 여러 번 호출한 것이다.
+
+#### Learned
+
+- ResizeObserver는 크기 변화의 원인이 요소 자신의 스타일 변경이든, 부모발 간접 변화(예: `width: 100%` 상속)든 구분하지 않고, 최종적으로 렌더링된 content box 크기 변화만을 기준으로 감지한다.
+- CSS `transition`이 걸린 상태에서 크기를 바꾸면, 애니메이션이 진행되는 동안 프레임마다 실제 크기가 바뀌므로 ResizeObserver callback도 애니메이션 프레임 수만큼 여러 번 호출될 수 있다.
+- transition이 없으면 크기 변경이 레이아웃에 한 번에 반영되므로 callback도 1회만 발생한다.
+- 즉 콜백 호출 횟수는 "몇 번의 상태 변경을 트리거했는가"가 아니라 "실제로 화면에 몇 번 다른 크기로 그려졌는가"에 좌우된다.
