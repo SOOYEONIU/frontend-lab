@@ -165,3 +165,32 @@ transition이 있을 때 callback이 여러 번 발생한 이유도 같은 원�
 - CSS `transition`이 걸린 상태에서 크기를 바꾸면, 애니메이션이 진행되는 동안 프레임마다 실제 크기가 바뀌므로 ResizeObserver callback도 애니메이션 프레임 수만큼 여러 번 호출될 수 있다.
 - transition이 없으면 크기 변경이 레이아웃에 한 번에 반영되므로 callback도 1회만 발생한다.
 - 즉 콜백 호출 횟수는 "몇 번의 상태 변경을 트리거했는가"가 아니라 "실제로 화면에 몇 번 다른 크기로 그려졌는가"에 좌우된다.
+
+### Case 05. display:none 상태에서 observe하면 어떻게 되는가?
+
+#### 예상
+
+`display:none`인 요소는 레이아웃에서 아예 제외되어 크기 자체가 없는 상태이므로, observe()를 호출해도 callback이 발생하지 않을 것이라 예상했다.
+
+#### 테스트
+
+`#hidden-box`를 처음부터 `display:none`으로 두고, 페이지 로드 시점에 바로 `hiddenBoxObserver.observe(hiddenBox)`를 호출했다. 이후 `Toggle Hidden Box Display` 버튼으로 `.shown` 클래스(`display:block`)를 토글해 실제로 보이게 만들었을 때의 로그도 함께 비교했다. Playwright로 클릭 전/후 로그를 확인했다.
+
+#### 결과
+
+`display:none` 상태 그대로 observe()했을 때도 callback이 1회 발생했다. 다만 `contentRect`/`contentBoxSize`/`borderBoxSize` 모두 `width=0, height=0`이었다.
+
+이후 버튼을 클릭해 `display:block`으로 바꾸자 callback이 다시 한 번 발생했고, 이번에는 실제 크기인 `width=120, height=80`이 전달되었다.
+
+#### 이유
+
+`display:none`인 요소는 레이아웃 트리에서 제외되어 content box 자체가 존재하지 않는다(크기 0으로 취급). ResizeObserver는 observe() 시점의 크기를 무조건 최초 notification으로 전달하기 때문에, 크기가 0이어도 "0이라는 크기의 최초 상태"를 알리는 callback은 발생한다.
+
+이후 `display:block`으로 바뀌면 요소가 다시 레이아웃에 포함되면서 content box 크기가 0 → 120x80으로 실제로 변경되므로, 이 변화 역시 정상적으로 감지되어 두 번째 callback이 발생한다.
+
+#### Learned
+
+- `display:none` 상태에서 observe()해도 예외 없이 최초 callback은 발생하며, 이때 크기 값은 모두 0이다.
+- ResizeObserver는 "요소가 화면에 실제로 보이는가"가 아니라 "content box 크기가 얼마인가"를 기준으로 동작하고, `display:none`은 그 크기를 0으로 만드는 하나의 상태일 뿐이다.
+- 크기가 0인 콜백도 유효한 notification이므로, callback 로직에서 `width`/`height`가 0인 경우를 별도로 처리해야 할 수 있다 (예: 렌더링 로직에서 0으로 나누는 계산 등).
+- `display:none` → `display:block`으로 전환되면 크기가 0에서 실제 값으로 바뀌는 것이므로 이 역시 하나의 resize로 감지된다 (Case 06과 연결됨).

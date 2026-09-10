@@ -32,3 +32,14 @@
     box-sizing: border-box;
     background-color: #d0d0d0;
 }
+
+#hidden-box {
+    display: none;
+    width: 120px;
+    height: 80px;
+    background-color: #c8e6c9;
+}
+
+#hidden-box.shown {
+    display: block;
+}

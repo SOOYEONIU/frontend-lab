@@ -9,8 +9,12 @@ const toggleOverflowBtn = document.getElementById(
 const toggleParentWidthBtn = document.getElementById(
   "toggle-parent-width",
 ) as HTMLButtonElement;
+const toggleHiddenBoxBtn = document.getElementById(
+  "toggle-hidden-box",
+) as HTMLButtonElement;
 const parent = document.getElementById("parent") as HTMLDivElement;
 const child = document.getElementById("child") as HTMLDivElement;
+const hiddenBox = document.getElementById("hidden-box") as HTMLDivElement;
 const [increaseWidthBtn, increaseHeightBtn] =
   document.querySelectorAll<HTMLButtonElement>("#controls button");
 
@@ -67,4 +71,15 @@ childObserver.observe(child);
 
 toggleParentWidthBtn.addEventListener("click", () => {
   parent.classList.toggle("narrow");
+});
+
+// Case: display:none 상태에서 observe하면 어떻게 되는가?
+// hiddenBox는 처음부터 display:none이며, 이 상태 그대로 observe()를 호출한다.
+const hiddenBoxObserver = new ResizeObserver((entries) => {
+  print("hidden-box callback (display:none)", entries);
+});
+hiddenBoxObserver.observe(hiddenBox);
+
+toggleHiddenBoxBtn.addEventListener("click", () => {
+  hiddenBox.classList.toggle("shown");
 });
