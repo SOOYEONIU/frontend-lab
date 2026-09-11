@@ -117,8 +117,6 @@ width만 변경했을 때는 height 값이, height만 변경했을 때는 width 
 
 box(width/height 100px 고정)는 그대로 두고, 내부에 `#box-content`(300px 고정, `white-space: nowrap`)를 토글로 삽입해 가로로 넘치게 만들었다. `Toggle Overflow Content` 버튼으로 on/off.
 
-Playwright로 실제 브라우저를 띄워 클릭 전/후의 `box.clientWidth`/`clientHeight`와 ResizeObserver 로그를 비교했다.
-
 #### 결과
 
 버튼을 클릭해 콘텐츠가 넘치는 상태(`scrollWidth(300) > clientWidth(100)`)가 되었지만, `box.clientHeight`는 클릭 전후 100으로 동일했다.

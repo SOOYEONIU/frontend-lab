@@ -11,6 +11,9 @@ const scrollToTargetBtn = document.getElementById(
 const scrollToTopBtn = document.getElementById(
   "scroll-to-top",
 ) as HTMLButtonElement;
+const smoothScrollToTargetBtn = document.getElementById(
+  "smooth-scroll-to-target",
+) as HTMLButtonElement;
 
 let callCount = 0;
 
@@ -47,9 +50,15 @@ const observer = new IntersectionObserver(
 observer.observe(target);
 
 scrollToTargetBtn.addEventListener("click", () => {
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.scrollIntoView({ block: "center" });
 });
 
 scrollToTopBtn.addEventListener("click", () => {
-  scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+  scrollContainer.scrollTo({ top: 0 });
+});
+
+// Case 03: threshold를 여러 개 주면 각 지점마다 callback이 발생하는가?
+// smooth 스크롤로 여러 프레임에 걸쳐 이동시켜, 0 -> 0.5 -> 1 을 프레임별로 지나치게 만든다.
+smoothScrollToTargetBtn.addEventListener("click", () => {
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
 });
