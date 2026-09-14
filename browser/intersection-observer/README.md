@@ -180,3 +180,83 @@ viewportObserver.observe(viewportTarget);
 - `rootBounds`를 확인하면 지금 어떤 영역을 기준으로 교차를 계산하고 있는지 바로 알 수 있다 — viewport 기준이면 브라우저 창 크기와, 커스텀 root면 그 요소의 크기와 일치한다.
 - "무한 스크롤"이나 "화면에 요소가 노출됐는지" 같은 전형적인 lazy-loading 용도로는 대부분 `root`를 생략해 viewport 기준으로 쓰는 경우가 많고, 특정 스크롤 컨테이너 내부에서만 노출 여부를 판단해야 할 때(예: 모달, 사이드 패널 리스트)만 커스텀 `root`를 지정하면 된다.
 - target이 root(커스텀이든 viewport든)의 스크롤 가능한 후손(ancestor)이 아니면 애초에 교차가 성립하지 않는다는 점도 유의해야 한다 (지금 예제는 `#viewport-target`이 `#scroll-container` 밖, 일반 문서 흐름에 있어 viewport와는 정상적으로 교차하지만 `#scroll-container`를 root로 관찰했다면 애초에 감지되지 않았을 것이다).
+
+### Case 05. rootMargin을 주면 교차 판정 범위가 어떻게 달라지는가?
+
+#### 예상
+
+`rootMargin`은 CSS의 `margin`처럼 root의 판정 범위를 상하좌우로 확장하거나 축소시킬 것이라 예상했다. 양수 값(`"100px"`)을 주면 root가 실제 크기보다 더 넓은 것처럼 취급되어, target이 실제 root 안으로 들어오기 전(더 멀리 있을 때)부터 `isIntersecting=true`로 잡힐 것이라 예상했다.
+
+#### 테스트
+
+기존 `#target`을 관찰하는 `marginObserver`를 추가로 만들어 `root: scrollContainer`, `rootMargin: "100px"`, `threshold: [0, 0.5, 1]`로 설정했다. 기본 `observer`(rootMargin 없음)와 `marginObserver`가 같은 target을 동시에 관찰하도록 하고, `Smooth Scroll to Target` 버튼으로 한 번의 스크롤 동안 두 observer의 callback을 함께 비교했다.
+
+```ts
+// root(scroll-container)의 판정 범위를 상하좌우 100px씩 확장시킨 상태에서
+// rootMargin이 없는 기본 observer와 동시에 비교한다.
+const marginObserver = new IntersectionObserver(
+  (entries) => {
+    print("margin callback (rootMargin: 100px)", entries);
+  },
+  {
+    root: scrollContainer,
+    rootMargin: "100px",
+    threshold: [0, 0.5, 1],
+  },
+);
+marginObserver.observe(target);
+```
+
+#### 결과
+
+페이지 로드 시점에 이미 `rootBounds.height` 차이가 보였다: 기본 observer는 `300.0`(`#scroll-container`의 실제 높이), `marginObserver`는 `500.0`(`300 + 100(위) + 100(아래)`). rootMargin이 root의 판정 범위 자체를 실제로 확장시킨다는 것을 바로 확인할 수 있었다.
+
+스크롤 도중 `isIntersecting`이 `true`로 바뀐 시점도 달랐다:
+- `marginObserver` (rootMargin 100px): `boundingClientRect.top=511.0`에서 먼저 `isIntersecting=true`로 전환
+- 기본 `observer` (rootMargin 없음): `boundingClientRect.top=446.0`이 되어서야(즉 target이 더 가까이 와서야) `isIntersecting=true`로 전환
+
+target이 같은 위치(`top=511`)에 있을 때, margin을 준 observer만 먼저 반응하고 기본 observer는 아직 반응하지 않은 것이다.
+
+#### 이유
+
+`rootMargin`은 실제 CSS margin처럼 root(여기서는 `#scroll-container`)의 판정용 경계 상자를 지정한 값만큼 안쪽/바깥쪽으로 늘리거나 줄인다. 양수 값(`"100px"`)을 주면 root의 상하좌우 경계가 각각 100px씩 바깥으로 확장된 것처럼 교차 계산이 이루어진다. 그래서 target이 실제 `#scroll-container`의 눈에 보이는 영역 밖에 있어도, 확장된 100px 여유 범위 안에만 들어오면 `isIntersecting=true`로 판정된다.
+
+이 때문에 `rootBounds`도 `300`이 아니라 `500`으로 보고되며(위아래 각 100px씩 늘어난 값), 같은 target·같은 스크롤 위치에서도 rootMargin이 있는 쪽이 항상 먼저(또는 더 늦게, 음수를 주면) 반응하게 된다.
+
+#### Learned
+
+- `rootMargin`은 root의 실제 크기가 아니라, "교차를 판정할 때 사용하는 가상의 경계"를 늘리거나 줄이는 옵션이다. 실제 레이아웃(root의 실제 크기나 스크롤 가능 영역)은 전혀 바뀌지 않는다.
+- 양수 값을 주면 target이 화면 안으로 실제 들어오기 "전에" 미리 감지할 수 있어, 무한 스크롤에서 "리스트 끝에 도달하기 조금 전에 다음 페이지를 미리 불러오는" 패턴(예: `rootMargin: "0px 0px 200px 0px"`로 아래쪽만 확장)에 흔히 쓰인다.
+- `rootBounds` 값을 찍어보면 rootMargin이 실제로 얼마나 반영됐는지 바로 검증할 수 있다 (root 실제 크기 + margin 합).
+- 음수 값을 주면 반대로 root 안쪽으로 판정 범위가 줄어들어, target이 화면에 완전히 들어오고도 일정 여유(margin만큼)가 지난 뒤에야 감지되게 만들 수도 있다 (이번 테스트에서는 직접 확인하지 않았지만, 양수와 대칭적으로 동작할 것으로 예상된다).
+
+### Case 06. target이 display:none이 되면 어떻게 되는가?
+
+#### 예상
+
+ResizeObserver 실험([browser/resize-observer](../resize-observer/README.md) Case 05)에서 `display:none`이 되면 content box가 0이 되는 것을 확인했었다. IntersectionObserver도 마찬가지로 target이 `display:none`이 되면 레이아웃 박스 자체가 사라지므로 `isIntersecting=false`, `intersectionRatio=0`이 되는 callback이 발생할 것이라 예상했다.
+
+#### 테스트
+
+처음부터 화면에 보이는 위치에 `#display-target`을 배치해(viewport 기준으로 이미 `isIntersecting=true`인 상태로 시작) 별도의 `displayObserver`(`threshold: [0, 1]`)로 관찰했다. `Toggle Display Target` 버튼으로 `.hidden` 클래스(`display:none`)를 토글하며 로그를 비교했다.
+
+#### 결과
+
+- 초기 상태(보이는 상태): `isIntersecting=true, intersectionRatio=1.00, boundingClientRect.top=62.0, rootBounds.height=600.0`
+- `display:none`으로 전환한 후: `isIntersecting=false, intersectionRatio=0.00, boundingClientRect.top=0.0, rootBounds.height=0.0`
+- 다시 `display:block`으로 전환한 후: `isIntersecting=true, intersectionRatio=1.00, boundingClientRect.top=57.0, rootBounds.height=600.0`
+
+예상대로 `isIntersecting`이 `false`로 바뀌었는데, `rootBounds.height`까지 `0.0`으로 찍힌 것은 예상 밖이었다. root(viewport) 자체는 전혀 바뀌지 않았는데도, target이 `display:none`이 되는 순간에는 `rootBounds`를 포함한 entry 전체가 "빈 사각형"으로 보고됐다.
+
+#### 이유
+
+`display:none`인 요소는 레이아웃 트리에서 제외되어 자체 경계 상자(`boundingClientRect`)가 없다. 스펙상 target이 레이아웃 박스를 갖지 않게 되면 해당 target은 교차하지 않는 것으로 간주되어 `isIntersecting=false`, `intersectionRatio=0`으로 보고되는데, 구현체(Chromium)는 이 상태의 entry를 "완전히 빈 사각형" 형태로 만들면서 `rootBounds`까지 함께 0으로 채워 보고하는 것으로 보인다. 즉 이 순간의 `rootBounds`는 실제 root의 현재 크기를 신뢰성 있게 반영하지 않는다.
+
+다시 `display:block`으로 돌아오면 target이 레이아웃에 복귀하며 정상적인 `boundingClientRect`/`rootBounds`가 다시 계산되어, 원래의 viewport 크기(`600.0`)가 그대로 돌아왔다.
+
+#### Learned
+
+- target이 `display:none`이 되면 `isIntersecting=false`, `intersectionRatio=0`인 callback이 발생한다 — ResizeObserver의 `display:none` 케이스와 같은 방향의 결론이다.
+- 다만 이 시점의 entry는 `boundingClientRect`뿐 아니라 `rootBounds`까지 모두 0으로 보고될 수 있으므로, callback 로직에서 `rootBounds`를 "현재 root의 실제 크기"로 신뢰해 계산에 쓰면 `display:none` 순간에 잘못된 값(0)을 근거로 동작할 위험이 있다.
+- `isIntersecting` 하나만 보고 분기하는 것이 `rootBounds`/`boundingClientRect`의 세부 값까지 믿고 계산하는 것보다 더 안전하다.
+- lazy-loading 등에서 `display:none`으로 요소를 감췄다가 다시 보이게 하는 패턴을 쓴다면, 다시 보일 때 교차 상태가 정상적으로 재계산되어 callback이 다시 발생한다는 것도 함께 확인했다 (unobserve/disconnect 없이도 계속 관찰이 유지됨).

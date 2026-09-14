@@ -23,6 +23,12 @@ const scrollPageToViewportTargetBtn = document.getElementById(
 const scrollPageToTopBtn = document.getElementById(
   "scroll-page-to-top",
 ) as HTMLButtonElement;
+const displayTarget = document.getElementById(
+  "display-target",
+) as HTMLDivElement;
+const toggleDisplayTargetBtn = document.getElementById(
+  "toggle-display-target",
+) as HTMLButtonElement;
 
 let callCount = 0;
 
@@ -91,4 +97,35 @@ scrollPageToViewportTargetBtn.addEventListener("click", () => {
 
 scrollPageToTopBtn.addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+// Case 05: rootMargin을 주면 교차 판정 범위가 어떻게 달라지는가?
+// 같은 target을 rootMargin: "100px"로 관찰해, root(scroll-container)의 판정 범위를
+// 상하좌우 100px씩 확장시킨 상태에서 기본 observer와 동시에 비교한다.
+const marginObserver = new IntersectionObserver(
+  (entries) => {
+    print("margin callback (rootMargin: 100px)", entries);
+  },
+  {
+    root: scrollContainer,
+    rootMargin: "100px",
+    threshold: [0, 0.5, 1],
+  },
+);
+marginObserver.observe(target);
+
+// Case 06: target이 display:none이 되면 어떻게 되는가?
+// displayTarget은 처음부터 viewport 안에서 보이는 상태로 시작한다.
+const displayObserver = new IntersectionObserver(
+  (entries) => {
+    print("display callback (display:none toggle)", entries);
+  },
+  {
+    threshold: [0, 1],
+  },
+);
+displayObserver.observe(displayTarget);
+
+toggleDisplayTargetBtn.addEventListener("click", () => {
+  displayTarget.classList.toggle("hidden");
 });
