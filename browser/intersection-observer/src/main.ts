@@ -14,6 +14,15 @@ const scrollToTopBtn = document.getElementById(
 const smoothScrollToTargetBtn = document.getElementById(
   "smooth-scroll-to-target",
 ) as HTMLButtonElement;
+const viewportTarget = document.getElementById(
+  "viewport-target",
+) as HTMLDivElement;
+const scrollPageToViewportTargetBtn = document.getElementById(
+  "scroll-page-to-viewport-target",
+) as HTMLButtonElement;
+const scrollPageToTopBtn = document.getElementById(
+  "scroll-page-to-top",
+) as HTMLButtonElement;
 
 let callCount = 0;
 
@@ -61,4 +70,25 @@ scrollToTopBtn.addEventListener("click", () => {
 // smooth 스크롤로 여러 프레임에 걸쳐 이동시켜, 0 -> 0.5 -> 1 을 프레임별로 지나치게 만든다.
 smoothScrollToTargetBtn.addEventListener("click", () => {
   target.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+// Case 04: root를 지정하지 않으면(viewport 기준) 어떻게 동작하는가?
+// scroll-container(커스텀 root)가 아니라, 별도의 observer로 문서 흐름 속 요소를 관찰한다.
+// options에 root를 아예 넣지 않으면 기본값은 null이며, viewport가 root로 쓰인다.
+const viewportObserver = new IntersectionObserver(
+  (entries) => {
+    print("viewport callback (root: viewport)", entries);
+  },
+  {
+    threshold: [0, 0.5, 1],
+  },
+);
+viewportObserver.observe(viewportTarget);
+
+scrollPageToViewportTargetBtn.addEventListener("click", () => {
+  viewportTarget.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+scrollPageToTopBtn.addEventListener("click", () => {
+  window.scrollTo({ top: 0, behavior: "smooth" });
 });

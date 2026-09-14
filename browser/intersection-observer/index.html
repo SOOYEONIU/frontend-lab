@@ -12,6 +12,10 @@
         <button id="scroll-to-target">Scroll to Target</button>
         <button id="scroll-to-top">Scroll to Top</button>
         <button id="smooth-scroll-to-target">Smooth Scroll to Target</button>
+        <button id="scroll-page-to-viewport-target">
+          Scroll Page to Viewport Target
+        </button>
+        <button id="scroll-page-to-top">Scroll Page to Top</button>
       </div>
 
       <div id="scroll-container">
@@ -21,6 +25,11 @@
       </div>
 
       <pre id="log"></pre>
+
+      <!-- Case 04: root를 지정하지 않으면(viewport 기준) 어떻게 동작하는가? -->
+      <div id="page-spacer"></div>
+      <div id="viewport-target">Viewport Target (root: viewport)</div>
+      <div id="page-spacer"></div>
     </div>
   </body>
 </html>

@@ -36,3 +36,16 @@
     padding: 8px;
     font-size: 12px;
 }
+
+#page-spacer {
+    height: 1000px;
+}
+
+#viewport-target {
+    width: 100%;
+    height: 100px;
+    background-color: #bbdefb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

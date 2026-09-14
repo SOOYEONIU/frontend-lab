@@ -134,3 +134,49 @@ IntersectionObserver의 교차 비율 계산은 스크롤 이벤트나 애니메
 - 이 누락 여부는 코드가 아니라 **실행 환경(리프레시 레이트, CPU 부하, headless/실브라우저 등)에 따라 달라질 수 있다** — 같은 코드를 두 번 실행해도 결과가 다를 수 있다는 뜻이므로, "특정 threshold가 항상 잡힌다"고 가정하고 로직을 짜면 안 된다.
 - 따라서 "정확히 50% 노출된 시점"처럼 특정 비율에 의존하는 로직이 필요하면 threshold 하나만 믿지 말고, 콜백마다 `intersectionRatio` 값을 직접 확인해서 원하는 범위(예: `>= 0.5`)를 스스로 판단하는 방식이 더 안전하다.
 - 반대로 Case 01/02처럼 `isIntersecting`(0 ↔ 0 초과 경계)만 필요한 경우는 threshold 기본값(`[0]`)만으로도 안정적으로 감지된다 — 문제가 되는 건 중간값 정밀도가 필요한 경우다.
+
+### Case 04. root를 지정하지 않으면(viewport 기준) 어떻게 동작하는가?
+
+#### 예상
+
+`root` 옵션을 아예 생략하면(또는 `null`) 기본값으로 브라우저의 viewport가 root로 쓰일 것이라 예상했다. 즉 커스텀 스크롤 컨테이너가 아니라 "페이지 자체를 스크롤"할 때 감지될 것이다.
+
+#### 테스트
+
+기존 `#scroll-container`/`#target`과는 별개로, 문서의 일반적인 흐름 속에 `#viewport-target`을 배치했다(위아래로 1000px짜리 `#page-spacer`를 둬서 처음엔 화면 밖에 있도록 함). 이 target을 관찰하는 `viewportObserver`는 options에 `root`를 아예 넣지 않았다.
+
+```ts
+// root를 지정하지 않으면 기본값은 null이며, viewport가 root로 쓰인다.
+const viewportObserver = new IntersectionObserver(
+  (entries) => {
+    print("viewport callback (root: viewport)", entries);
+  },
+  {
+    threshold: [0, 0.5, 1],
+  },
+);
+viewportObserver.observe(viewportTarget);
+```
+
+`Scroll Page to Viewport Target` 버튼으로 `viewportTarget.scrollIntoView({ behavior: "smooth", block: "center" })`를 호출해 페이지 자체를 스크롤시키고, `Scroll Page to Top` 버튼으로 `window.scrollTo(...)`를 호출해 되돌렸다. Playwright에서 뷰포트 크기를 800x600으로 고정하고 로그를 확인했다.
+
+#### 결과
+
+- 페이지 로드 직후: `isIntersecting=false, intersectionRatio=0.00, rootBounds.height=600.0`
+- `Scroll Page to Viewport Target` 클릭 후: `isIntersecting=true`로 바뀌며 `intersectionRatio`가 `0.18 → 0.65 → 1.00`처럼 여러 단계를 거쳐 올라가는 callback들이 연속으로 발생
+- `Scroll Page to Top` 클릭 후: 다시 `isIntersecting=false`로 돌아오는 callback 발생
+
+가장 중요한 확인 포인트는 `rootBounds.height`가 `600.0`이었다는 것이다. 이는 Playwright에서 설정한 브라우저 뷰포트 높이(800x600)와 정확히 일치한다. `#scroll-container`를 root로 쓴 기존 observer의 `rootBounds.height`가 `300.0`(컨테이너 자체 높이)이었던 것과 비교하면 차이가 명확하다.
+
+#### 이유
+
+`IntersectionObserver` 생성자의 `root` 옵션은 기본값이 `null`이며, 스펙상 `root`가 `null`이면 "the observer's target's nearest scrollable ancestor... falls back to the top-level document's viewport"로 정의되어 있다. 즉 별도로 지정하지 않으면 브라우저 창(viewport) 자체가 교차 판정의 기준 영역이 된다.
+
+이 때문에 `rootBounds`도 viewport의 크기(`800x600`)를 그대로 반영했고, `#viewport-target`이 페이지 스크롤에 의해 화면(viewport) 안으로 들어오고 나가는 것을 정확히 감지했다. 반면 `root: scrollContainer`로 지정한 기존 observer는 window가 아니라 그 컨테이너 내부 스크롤만 기준으로 삼기 때문에, 페이지 자체를 스크롤해도 반응하지 않고 `#scroll-container` 내부 스크롤에만 반응한다.
+
+#### Learned
+
+- `root`를 생략(또는 `null`)하면 브라우저 viewport가 기준이 되며, 이때는 `window.scroll`이나 `element.scrollIntoView()` 같은 "페이지 스크롤"이 교차 판정의 트리거가 된다.
+- `rootBounds`를 확인하면 지금 어떤 영역을 기준으로 교차를 계산하고 있는지 바로 알 수 있다 — viewport 기준이면 브라우저 창 크기와, 커스텀 root면 그 요소의 크기와 일치한다.
+- "무한 스크롤"이나 "화면에 요소가 노출됐는지" 같은 전형적인 lazy-loading 용도로는 대부분 `root`를 생략해 viewport 기준으로 쓰는 경우가 많고, 특정 스크롤 컨테이너 내부에서만 노출 여부를 판단해야 할 때(예: 모달, 사이드 패널 리스트)만 커스텀 `root`를 지정하면 된다.
+- target이 root(커스텀이든 viewport든)의 스크롤 가능한 후손(ancestor)이 아니면 애초에 교차가 성립하지 않는다는 점도 유의해야 한다 (지금 예제는 `#viewport-target`이 `#scroll-container` 밖, 일반 문서 흐름에 있어 viewport와는 정상적으로 교차하지만 `#scroll-container`를 root로 관찰했다면 애초에 감지되지 않았을 것이다).
