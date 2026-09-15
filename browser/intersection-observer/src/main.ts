@@ -29,6 +29,9 @@ const displayTarget = document.getElementById(
 const toggleDisplayTargetBtn = document.getElementById(
   "toggle-display-target",
 ) as HTMLButtonElement;
+const unobserveTargetBtn = document.getElementById(
+  "unobserve-target",
+) as HTMLButtonElement;
 
 let callCount = 0;
 
@@ -128,4 +131,11 @@ displayObserver.observe(displayTarget);
 
 toggleDisplayTargetBtn.addEventListener("click", () => {
   displayTarget.classList.toggle("hidden");
+});
+
+// Case 07: unobserve하면 어떻게 되는가?
+// 같은 target을 관찰하는 두 observer(observer, marginObserver) 중 하나만 unobserve해서,
+// 이후 스크롤에서 한쪽은 callback이 멈추고 다른 한쪽은 계속 발생하는지 비교한다.
+unobserveTargetBtn.addEventListener("click", () => {
+  observer.unobserve(target);
 });

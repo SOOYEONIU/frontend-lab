@@ -260,3 +260,46 @@ ResizeObserver 실험([browser/resize-observer](../resize-observer/README.md) Ca
 - 다만 이 시점의 entry는 `boundingClientRect`뿐 아니라 `rootBounds`까지 모두 0으로 보고될 수 있으므로, callback 로직에서 `rootBounds`를 "현재 root의 실제 크기"로 신뢰해 계산에 쓰면 `display:none` 순간에 잘못된 값(0)을 근거로 동작할 위험이 있다.
 - `isIntersecting` 하나만 보고 분기하는 것이 `rootBounds`/`boundingClientRect`의 세부 값까지 믿고 계산하는 것보다 더 안전하다.
 - lazy-loading 등에서 `display:none`으로 요소를 감췄다가 다시 보이게 하는 패턴을 쓴다면, 다시 보일 때 교차 상태가 정상적으로 재계산되어 callback이 다시 발생한다는 것도 함께 확인했다 (unobserve/disconnect 없이도 계속 관찰이 유지됨).
+
+### Case 07. unobserve하면 어떻게 되는가?
+
+#### 예상
+
+`unobserve(target)`을 호출하면 그 순간부터 해당 target에 대한 callback이 더 이상 발생하지 않을 것이라 예상했다. 다만 같은 target을 다른 observer 인스턴스가 관찰 중이라면, 그 observer에는 영향이 없을 것이라 예상했다 (unobserve는 "observer 인스턴스와 target의 관계"를 끊는 것이지, target 자체에 무언가를 하는 게 아니므로).
+
+#### 테스트
+
+같은 `#target`을 관찰하는 두 observer가 이미 있었다 — 기본 `observer`(rootMargin 없음)와 Case 05의 `marginObserver`(rootMargin: 100px). `Unobserve Target` 버튼을 눌러 `observer.unobserve(target)`만 호출하고, `marginObserver`는 그대로 뒀다.
+
+```ts
+// 같은 target을 관찰하는 두 observer 중 하나만 unobserve해서
+// 이후 스크롤에서 한쪽은 멈추고 다른 한쪽은 계속되는지 비교한다.
+unobserveTargetBtn.addEventListener("click", () => {
+  observer.unobserve(target);
+});
+```
+
+unobserve 직후 로그를 한 번 확인하고, 이어서 `Smooth Scroll to Target` 버튼으로 target을 다시 스크롤시킨 뒤 로그를 비교했다.
+
+#### 결과
+
+`unobserve` 호출 자체는 아무 callback도 발생시키지 않았다 (호출 직후 로그에 새 항목 없음).
+
+이후 스크롤을 실행하자:
+- `[margin callback (rootMargin: 100px)]` — `isIntersecting: true`로 전환되는 callback이 2번(`0.39`, `1.00`) 정상적으로 발생
+- `[callback]`(unobserve한 기본 observer) — 스크롤 이후 로그에 **단 한 번도 다시 나타나지 않음**
+
+같은 target, 같은 스크롤인데도 unobserve하지 않은 쪽만 계속 반응하고, unobserve한 쪽은 완전히 조용해졌다.
+
+#### 이유
+
+`unobserve(target)`은 "그 IntersectionObserver 인스턴스가 그 target을 더 이상 관찰하지 않도록" 관계를 끊는 메서드다. observer 자체가 사라지는 것도 아니고 target에 어떤 변화가 생기는 것도 아니며, 오직 "이 observer-target 쌍"에 대한 구독만 취소된다.
+
+그래서 같은 target을 다른 observer(`marginObserver`)가 별도로 구독하고 있다면 그쪽은 전혀 영향을 받지 않고 독립적으로 계속 동작한다. IntersectionObserver의 관찰 관계는 (observer 인스턴스, target) 쌍 단위로 관리된다는 것을 확인할 수 있었다.
+
+#### Learned
+
+- `unobserve(target)`은 해당 observer 인스턴스에서 그 target 하나만 관찰 목록에서 제거한다. 같은 observer가 관찰하는 다른 target이나, 같은 target을 관찰하는 다른 observer에는 영향이 없다.
+- unobserve 호출 자체는 callback을 트리거하지 않는다 (조용히 구독을 끊을 뿐, "마지막 상태" 같은 걸 알려주지 않는다).
+- 컴포넌트 unmount, 무한 스크롤에서 특정 아이템 로드 완료 후 더 이상 볼 필요 없어진 경우처럼 "이 요소는 더 이상 관찰할 필요 없다"는 상황에 `unobserve`를 쓰면 메모리 누수 없이 딱 그 관계만 정리할 수 있다.
+- 반대로 observer 자체를 더 이상 쓰지 않을 거라면(모든 target을 다 끊거나) `disconnect()`로 한 번에 정리하는 편이 낫다 (Case 08 이후에서 비교해볼 부분).
