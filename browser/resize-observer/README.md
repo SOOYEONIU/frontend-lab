@@ -192,3 +192,51 @@ transition이 있을 때 callback이 여러 번 발생한 이유도 같은 원�
 - ResizeObserver는 "요소가 화면에 실제로 보이는가"가 아니라 "content box 크기가 얼마인가"를 기준으로 동작하고, `display:none`은 그 크기를 0으로 만드는 하나의 상태일 뿐이다.
 - 크기가 0인 콜백도 유효한 notification이므로, callback 로직에서 `width`/`height`가 0인 경우를 별도로 처리해야 할 수 있다 (예: 렌더링 로직에서 0으로 나누는 계산 등).
 - `display:none` → `display:block`으로 전환되면 크기가 0에서 실제 값으로 바뀌는 것이므로 이 역시 하나의 resize로 감지된다 (Case 06과 연결됨).
+
+### Case 06. display:none → block이면 어떻게 되는가?
+
+#### 예상
+
+Case 05에서 이미 확인했듯, `display:none` 상태에서는 content box 크기가 `0`으로 취급된다. 여기서 `display:block`으로 전환하면 요소가 다시 레이아웃에 포함되면서 실제 크기(`120x80`)로 바뀌는 것이므로, 이 변화도 하나의 정상적인 resize로 감지될 것이라 예상했다.
+
+#### 테스트
+
+Case 05와 동일한 `#hidden-box`/`hiddenBoxObserver` 구성을 그대로 사용했다. `Toggle Hidden Box Display` 버튼을 처음 한 번 클릭해 `.shown` 클래스를 추가(`display:none → block`)하고, 그 직후의 로그만 따로 확인했다.
+
+#### 결과
+
+첫 클릭(`none → block`) 직후 callback이 1회 발생했고, `contentRect`/`contentBoxSize`/`borderBoxSize` 모두 `width=120.0, height=80.0`(CSS에 지정한 실제 크기)이 전달되었다. 직전 callback(#3, observe 시점)의 `0x0`과 명확히 비교됐다.
+
+#### 이유
+
+`display:none`일 때는 content box가 존재하지 않아 크기가 `0`으로 취급되지만, `display:block`으로 바뀌면 요소가 레이아웃 트리에 다시 포함되어 실제 CSS 크기(`width: 120px; height: 80px`)만큼의 content box가 새로 생긴다. ResizeObserver 입장에서는 이 역시 "content box 크기가 `0`에서 `120x80`으로 실제로 달라진 것"이므로 일반적인 resize와 동일하게 감지되고 callback이 발생한다.
+
+#### Learned
+
+- `display:none → block` 전환은 요소가 "다시 나타나는 것"이라기보다, ResizeObserver 관점에서는 "content box 크기가 0에서 실제 값으로 바뀐 resize 이벤트"일 뿐이다.
+- 별도의 분기 없이도 하나의 callback 안에서 이전 크기(0)와 현재 크기(120x80)를 비교하면 "요소가 막 보이기 시작했다"는 것을 판단할 수 있다.
+- 컴포넌트가 조건부로 `display:none ↔ block`을 오가는 UI(예: 아코디언, 탭 패널)에서 크기가 필요한 로직(차트 리사이즈 등)을 ResizeObserver로 처리한다면, 이 전환 시점의 callback 하나로 "다시 보이기 시작했을 때 크기를 다시 계산"하는 처리가 가능하다.
+
+### Case 07. block → none이면 어떻게 되는가?
+
+#### 예상
+
+Case 06과 반대 방향이므로, `display:block` 상태에서 실제 크기(`120x80`)로 있던 요소가 `display:none`으로 바뀌면 content box가 다시 `0`이 되는 것으로 감지되어 callback이 발생할 것이라 예상했다.
+
+#### 테스트
+
+Case 06에서 이미 `display:block`으로 전환해둔 `#hidden-box`에 대해, `Toggle Hidden Box Display` 버튼을 한 번 더 클릭해 `.shown` 클래스를 제거(`display:block → none`)했다. Playwright로 클릭 전/후 로그를 비교했다.
+
+#### 결과
+
+두 번째 클릭(`block → none`) 직후 callback이 1회 발생했고, `contentRect`/`contentBoxSize`/`borderBoxSize` 모두 다시 `width=0.0, height=0.0`으로 돌아왔다. 직전 callback(#4)의 `120x80`과 대비된다.
+
+#### 이유
+
+Case 06과 정확히 대칭적인 이유다. `display:block → none`으로 바뀌면 요소가 레이아웃 트리에서 제외되어 content box가 사라지고, ResizeObserver는 이를 "크기가 `120x80`에서 `0`으로 실제로 줄어든 resize"로 감지한다. `display:none`이 "크기를 0으로 만드는 하나의 상태"라는 Case 05의 결론과 일관된다.
+
+#### Learned
+
+- `display:block → none` 전환도 `none → block`과 마찬가지로 하나의 정상적인 resize(이번엔 `120x80 → 0`)로 감지되며, ResizeObserver 쪽에서 별도의 특수 처리가 필요하지 않다.
+- 결과적으로 Case 05/06/07을 종합하면, ResizeObserver에게 `display:none`은 특별한 상태가 아니라 그냥 "content box 크기가 0인 상태"이고, `none ↔ block` 전환은 이 0과 실제 크기 사이를 오가는 두 번의 resize일 뿐이다.
+- 크기가 0으로 줄어드는 callback을 별도로 처리하지 않으면(예: 0으로 나누기, 차트 라이브러리에 0 크기를 그대로 전달) 런타임 에러나 시각적 깨짐이 발생할 수 있으므로, `width`/`height`가 0인 경우를 명시적으로 걸러내는 방어 코드가 필요할 수 있다.
