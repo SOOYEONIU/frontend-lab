@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>event-loop</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="controls">
+        <button id="run-basic-order">Case 01. 기본 실행 순서</button>
+        <button id="run-microtask-chain">Case 02. Promise.then 체이닝</button>
+        <button id="run-microtask-starvation">
+          Case 03. microtask 재귀 큐잉
+        </button>
+        <button id="run-async-function">Case 04. async 함수 내부 순서</button>
+        <button id="run-raf-vs-microtask">
+          Case 05. requestAnimationFrame vs microtask
+        </button>
+        <button id="run-settimeout-nesting">
+          Case 06. setTimeout 중첩 clamping
+        </button>
+        <button id="clear-log">Clear Log</button>
+      </div>
+
+      <pre id="log"></pre>
+    </div>
+  </body>
+</html>
