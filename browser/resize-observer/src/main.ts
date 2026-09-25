@@ -15,6 +15,12 @@ const toggleHiddenBoxBtn = document.getElementById(
 const parent = document.getElementById("parent") as HTMLDivElement;
 const child = document.getElementById("child") as HTMLDivElement;
 const hiddenBox = document.getElementById("hidden-box") as HTMLDivElement;
+const toggleVisibilityBoxBtn = document.getElementById(
+  "toggle-visibility-box",
+) as HTMLButtonElement;
+const visibilityBox = document.getElementById(
+  "visibility-box",
+) as HTMLDivElement;
 const [increaseWidthBtn, increaseHeightBtn] =
   document.querySelectorAll<HTMLButtonElement>("#controls button");
 
@@ -82,4 +88,15 @@ hiddenBoxObserver.observe(hiddenBox);
 
 toggleHiddenBoxBtn.addEventListener("click", () => {
   hiddenBox.classList.toggle("shown");
+});
+
+// Case 08: visibility:hidden은 어떻게 되는가?
+// display:none과 달리, visibility:hidden은 레이아웃 공간은 그대로 차지한 채 시각적으로만 감춘다.
+const visibilityBoxObserver = new ResizeObserver((entries) => {
+  print("visibility-box callback (visibility:hidden toggle)", entries);
+});
+visibilityBoxObserver.observe(visibilityBox);
+
+toggleVisibilityBoxBtn.addEventListener("click", () => {
+  visibilityBox.classList.toggle("invisible");
 });

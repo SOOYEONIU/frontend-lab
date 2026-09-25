@@ -240,3 +240,39 @@ Case 06과 정확히 대칭적인 이유다. `display:block → none`으로 바�
 - `display:block → none` 전환도 `none → block`과 마찬가지로 하나의 정상적인 resize(이번엔 `120x80 → 0`)로 감지되며, ResizeObserver 쪽에서 별도의 특수 처리가 필요하지 않다.
 - 결과적으로 Case 05/06/07을 종합하면, ResizeObserver에게 `display:none`은 특별한 상태가 아니라 그냥 "content box 크기가 0인 상태"이고, `none ↔ block` 전환은 이 0과 실제 크기 사이를 오가는 두 번의 resize일 뿐이다.
 - 크기가 0으로 줄어드는 callback을 별도로 처리하지 않으면(예: 0으로 나누기, 차트 라이브러리에 0 크기를 그대로 전달) 런타임 에러나 시각적 깨짐이 발생할 수 있으므로, `width`/`height`가 0인 경우를 명시적으로 걸러내는 방어 코드가 필요할 수 있다.
+
+### Case 08. visibility:hidden은 어떻게 되는가?
+
+#### 예상
+
+`display:none`과 달리 `visibility:hidden`은 요소를 시각적으로만 감추고 레이아웃 공간(자리)은 그대로 차지하는 것으로 알고 있다. 따라서 content box의 크기 자체는 변하지 않을 것이므로, `visibility:hidden`을 토글해도 ResizeObserver callback은 발생하지 않을 것이라 예상했다.
+
+#### 테스트
+
+`#visibility-box`(120x80, 초기 상태 `visibility: visible`)를 `visibilityBoxObserver`로 관찰했다. `Toggle Visibility Box` 버튼으로 `.invisible` 클래스(`visibility: hidden`)를 토글하며 로그를 비교했다.
+
+```css
+#visibility-box.invisible {
+    visibility: hidden;
+}
+```
+
+#### 결과
+
+- 토글 전 `boundingBox`: `{ x: 8, y: 179, width: 120, height: 80 }`
+- `visibility: hidden`으로 전환 후 `boundingBox`: `{ x: 8, y: 179, width: 120, height: 80 }` — **완전히 동일**
+- ResizeObserver 로그: observe 시점의 최초 callback(`width=120, height=80`) 이후, `visibility:hidden`으로 전환해도 → 새 callback 없음, 다시 `visible`로 전환해도 → 역시 새 callback 없음
+
+예상대로 `visibility:hidden` 토글은 ResizeObserver에 어떤 반응도 일으키지 않았다.
+
+#### 이유
+
+`visibility:hidden`은 `display:none`과 달리 요소를 레이아웃 트리에서 제거하지 않는다. 요소는 여전히 그 자리를 차지하고 content box의 크기도 그대로 유지된 채, 다만 화면에 그려지지(paint) 않을 뿐이다. ResizeObserver는 오직 content box의 크기 변화만을 감지하는데, `visibility:hidden`은 이 크기에 전혀 영향을 주지 않으므로 감지할 대상 자체가 없는 것이다.
+
+이는 Case 05~07에서 확인한 `display:none`(크기를 0으로 만듦)과 명확히 대비된다. `display:none`은 "크기 변화"이고, `visibility:hidden`은 "크기는 그대로인 채 렌더링(그리기)만 생략"이라는 점에서 ResizeObserver 입장에서는 전혀 다른 종류의 상태 변화다.
+
+#### Learned
+
+- `visibility:hidden`은 레이아웃 공간을 그대로 차지하므로 ResizeObserver로는 전혀 감지되지 않는다. "화면에 보이는지 여부"를 ResizeObserver로 판단하려 하면 안 된다 (이 용도에는 IntersectionObserver의 `isIntersecting`이나 별도의 `visibility` 값 확인이 필요하다).
+- `display:none`과 `visibility:hidden`은 둘 다 "안 보이게 만든다"는 결과는 같지만, ResizeObserver 관점에서는 완전히 다르게 취급된다 — 전자는 크기를 0으로 만드는 resize이고, 후자는 크기에 아무 영향도 주지 않는 무관한 변화다.
+- 두 속성을 혼용해서 쓰는 컴포넌트라면(예: 애니메이션 중엔 `visibility:hidden`, 완전히 제거할 땐 `display:none`), ResizeObserver 기반 로직이 `visibility` 전환에는 반응하지 않는다는 점을 전제로 설계해야 한다.

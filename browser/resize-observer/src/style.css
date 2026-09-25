@@ -43,3 +43,13 @@
 #hidden-box.shown {
     display: block;
 }
+
+#visibility-box {
+    width: 120px;
+    height: 80px;
+    background-color: #ffcdd2;
+}
+
+#visibility-box.invisible {
+    visibility: hidden;
+}
