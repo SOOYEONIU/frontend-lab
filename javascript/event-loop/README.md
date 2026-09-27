@@ -84,13 +84,46 @@ print("sync: script end");
 
 #### 예상
 
+`.then`을 3번 체이닝하면 각 `.then`도 하나의 microtask이니, 중간에 이미 큐에 들어있는 `setTimeout`(macrotask)이 하나쯤 끼어들 수도 있지 않을까 예상했다. 즉 `chain:1` → `setTimeout` → `chain:2` → `chain:3`처럼 섞일 가능성을 의심했다.
+
 #### 테스트
+
+```ts
+setTimeout(() => {
+  print("macrotask: setTimeout");
+}, 0);
+
+Promise.resolve()
+  .then(() => print("microtask chain: 1"))
+  .then(() => print("microtask chain: 2"))
+  .then(() => print("microtask chain: 3"));
+
+print("sync: script end");
+```
 
 #### 결과
 
+```
+#1 sync: script end
+#2 microtask chain: 1
+#3 microtask chain: 2
+#4 microtask chain: 3
+#5 macrotask: setTimeout
+```
+
+예상과 달리 `setTimeout`이 끼어들지 않았다. 체이닝된 `.then` 3개가 전부 순서대로(`#2`, `#3`, `#4`) 실행된 뒤에야 `setTimeout`(`#5`)이 실행됐다.
+
 #### 이유
 
+`.then` 콜백 하나가 끝나면 그 반환값(Promise)에 대한 다음 `.then`이 **새로운 microtask로 즉시 큐에 등록**된다. 이벤트 루프는 하나의 macrotask를 실행하기 전에 microtask 큐를 "완전히 빌 때까지" 반복해서 비우기 때문에, 체이닝 도중 새로 추가된 microtask도 모두 같은 라운드 안에서 처리된다.
+
+즉 `chain:1`이 실행되면서 `chain:2`가 큐에 새로 들어가고, `chain:2`가 실행되면서 `chain:3`이 또 큐에 들어가는 식으로 microtask 큐가 계속 채워지지만, 이벤트 루프는 이 큐가 텅 빌 때까지는 절대 macrotask로 넘어가지 않는다.
+
 #### Learned
+
+- microtask 큐는 "한 번 스냅샷을 떠서 그만큼만 처리"하는 게 아니라, 처리 도중 새로 추가된 것까지 포함해서 **큐가 완전히 빌 때까지** 계속 처리한다.
+- `.then` 체이닝이 아무리 길어도(동기적으로 resolve되는 한) 그 사이에 macrotask(setTimeout 등)가 끼어들 여지가 없다.
+- 이 특성 때문에 `.then` 체이닝을 무한히 반복하는 코드를 작성하면 setTimeout이나 UI 렌더링이 영원히 뒤로 밀리는 microtask 굶주림(starvation)이 발생할 수 있다 → Case 03에서 직접 확인.
 
 ### Case 03. microtask 재귀 큐잉
 
