@@ -2,6 +2,34 @@
 
 > https://developer.mozilla.org/en-US/docs/Web/JavaScript/Event_loop
 
+## 시각화 UI 실행
+
+```bash
+pnpm --filter event-loop dev
+```
+
+- 예제를 선택한 뒤 **재생**, **이전 / 다음 단계**, **처음으로**로 실행 흐름을 확인한다.
+- 진행 막대로 원하는 단계로 이동하고, 0.5× / 1× / 2×로 재생 속도를 조절한다.
+- 현재 코드 줄, Call Stack, Web APIs의 타이머, Microtask Queue, Task Queue, Animation Frames와 콘솔이 함께 바뀐다.
+- **실제 브라우저에서 비교 → 실행**은 실제 API로 같은 예제를 실행하고 순서와 경과 시간을 표시한다. 예제 변경이나 초기화 시 이전 실행은 취소된다.
+- 기존 6개 예제에 **Task 사이의 Microtask** 예제를 추가했다.
+
+이 UI는 브라우저 내부 큐를 직접 관찰하는 도구가 아니라, 미리 정의한 예제의 동작을 설명하는 시뮬레이션이다. 사용자 함수 중심으로 스택을 표시하며 내장 API의 프레임과 Promise 내부 처리는 생략한다. 타이머의 준비 시점은 가정하고, 여러 task source의 큐는 하나로 단순화했다. rAF 예제는 렌더링 기회가 먼저 오는 한 가지 실행을 보여주며, 실제 rAF와 타이머의 상대 순서는 달라질 수 있다. 재생 속도와 단계 수는 실제 실행 시간과 무관하다.
+
+타이머 중첩 예제의 ≥4ms는 HTML 타이머 알고리즘의 최소 지연 조건이다. 실제 측정값에는 스케줄링 및 계측 오버헤드가 포함되므로 정확히 4ms가 되리라는 보장은 없다.
+
+정적 화면과 반복 요소의 `<template>`은 `index.html`에서 관리한다. DOM을 문자열로 만들지 않고 템플릿 복제와 `textContent`로 내용을 채운다.
+
+- `src/main.ts`: 초기화와 이벤트 연결
+- `src/scenarios.ts`: 예제 코드와 시뮬레이션 입력
+- `src/simulator.ts`: DOM과 무관한 단계별 상태 생성
+- `src/playback.ts`: 재생, 일시정지, 탐색, 속도 관리
+- `src/view.ts`: 코드 강조와 변경된 스택·큐·로그 갱신
+- `src/dom.ts`: DOM 조회와 템플릿 복제 유틸리티
+- `src/native.ts`: 실제 브라우저 API 실행과 취소
+
+참고: [MDN microtask guide](https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide/In_depth), [HTML Standard timers](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers).
+
 ## Goal
 
 동기 코드, microtask(Promise, queueMicrotask), macrotask(setTimeout),

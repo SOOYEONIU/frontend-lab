@@ -1,160 +1,73 @@
-import "./style.css";
+﻿import "./style.css";
+import { runNative, type NativeEntry } from "./native";
+import { Playback } from "./playback";
+import { scenarios } from "./scenarios";
+import { simulate } from "./simulator";
+import { createView } from "./view";
 
-const log = document.getElementById("log") as HTMLPreElement;
-const runBasicOrderBtn = document.getElementById(
-  "run-basic-order",
-) as HTMLButtonElement;
-const runMicrotaskChainBtn = document.getElementById(
-  "run-microtask-chain",
-) as HTMLButtonElement;
-const runMicrotaskStarvationBtn = document.getElementById(
-  "run-microtask-starvation",
-) as HTMLButtonElement;
-const runAsyncFunctionBtn = document.getElementById(
-  "run-async-function",
-) as HTMLButtonElement;
-const runRafVsMicrotaskBtn = document.getElementById(
-  "run-raf-vs-microtask",
-) as HTMLButtonElement;
-const runSetTimeoutNestingBtn = document.getElementById(
-  "run-settimeout-nesting",
-) as HTMLButtonElement;
-const clearLogBtn = document.getElementById("clear-log") as HTMLButtonElement;
+let selected = scenarios[0];
+let snapshots = simulate(selected);
+let cancelNative: (() => void) | undefined;
 
-let callCount = 0;
+const view = createView(scenarios, selectScenario);
+const playback = new Playback(state => {
+  view.render(snapshots[state.cursor], state);
+});
 
-function print(label: string) {
-  callCount += 1;
-  log.textContent += `#${callCount} ${label}\n`;
-  log.scrollTop = log.scrollHeight;
+function clearNative(): void {
+  cancelNative?.();
+  cancelNative = undefined;
+  view.resetNative();
 }
 
-function printSection(title: string) {
-  log.textContent += `\n=== ${title} ===\n`;
-  log.scrollTop = log.scrollHeight;
+function selectScenario(id: string): void {
+  const scenario = scenarios.find(item => item.id === id);
+  if (!scenario) return;
+
+  clearNative();
+  selected = scenario;
+  snapshots = simulate(scenario);
+  view.selectScenario(scenario);
+  playback.load(snapshots.length);
 }
 
-// Case 01: console.log / setTimeout / Promise.then / queueMicrotask는
-// 어떤 순서로 실행되는가?
-runBasicOrderBtn.addEventListener("click", () => {
-  printSection("Case 01. 기본 실행 순서");
+function compareNative(): void {
+  clearNative();
+  view.startNative();
+  const logs: NativeEntry[] = [];
+  const expected = snapshots[snapshots.length - 1].logs;
 
-  print("sync: script start");
-
-  setTimeout(() => {
-    print("macrotask: setTimeout");
-  }, 0);
-
-  Promise.resolve().then(() => {
-    print("microtask: Promise.then");
-  });
-
-  queueMicrotask(() => {
-    print("microtask: queueMicrotask");
-  });
-
-  print("sync: script end");
-});
-
-// Case 02: Promise.then을 여러 번 체이닝하면 각 then은
-// 같은 tick에서 처리되는가, 아니면 매크로태스크 사이사이에 끼어드는가?
-runMicrotaskChainBtn.addEventListener("click", () => {
-  printSection("Case 02. Promise.then 체이닝");
-
-  setTimeout(() => {
-    print("macrotask: setTimeout");
-  }, 0);
-
-  Promise.resolve()
-    .then(() => print("microtask chain: 1"))
-    .then(() => print("microtask chain: 2"))
-    .then(() => print("microtask chain: 3"));
-
-  print("sync: script end");
-});
-
-// Case 03: microtask 콜백 안에서 다시 queueMicrotask를 호출하면
-// 큐가 계속 늘어나면서 macrotask(setTimeout)를 굶길 수 있는가?
-runMicrotaskStarvationBtn.addEventListener("click", () => {
-  printSection("Case 03. microtask 재귀 큐잉 (5회로 제한)");
-
-  setTimeout(() => {
-    print("macrotask: setTimeout (microtask 큐가 다 비워진 뒤 실행됨)");
-  }, 0);
-
-  let depth = 0;
-  function recurse() {
-    depth += 1;
-    print(`microtask recursion depth: ${depth}`);
-    if (depth < 5) {
-      queueMicrotask(recurse);
+  // Run directly in the click task to start with timer nesting level 0.
+  cancelNative = runNative(selected.id, entry => {
+    logs.push(entry);
+    if (logs.length === expected.length) {
+      // Avoid DOM work between the measured callbacks.
+      view.showNativeResults(logs, expected);
     }
-  }
-  queueMicrotask(recurse);
-
-  print("sync: script end");
-});
-
-// Case 04: async 함수 내부에서 await 이전 코드는 동기적으로 실행되는가?
-// await 이후 코드는 microtask로 스케줄링되는가?
-runAsyncFunctionBtn.addEventListener("click", () => {
-  printSection("Case 04. async 함수 내부 순서");
-
-  async function asyncTask() {
-    print("async fn: await 이전 (동기 실행)");
-    await null;
-    print("async fn: await 이후 (microtask로 재개)");
-  }
-
-  setTimeout(() => {
-    print("macrotask: setTimeout");
-  }, 0);
-
-  asyncTask();
-
-  print("sync: asyncTask() 호출 이후");
-});
-
-// Case 05: requestAnimationFrame은 microtask보다 먼저 실행되는가,
-// 아니면 나중에 실행되는가? setTimeout(0)과 비교하면 어떤가?
-runRafVsMicrotaskBtn.addEventListener("click", () => {
-  printSection("Case 05. requestAnimationFrame vs microtask vs setTimeout");
-
-  setTimeout(() => {
-    print("macrotask: setTimeout(0)");
-  }, 0);
-
-  requestAnimationFrame(() => {
-    print("rAF: requestAnimationFrame");
   });
+}
 
-  Promise.resolve().then(() => {
-    print("microtask: Promise.then");
-  });
-
-  print("sync: script end");
+const { controls } = view;
+controls.play.addEventListener("click", () => playback.toggle());
+controls.previous.addEventListener("click", () => playback.step(-1));
+controls.next.addEventListener("click", () => playback.step(1));
+controls.reset.addEventListener("click", () => {
+  clearNative();
+  playback.seek(0);
+});
+controls.progress.addEventListener("input", () => {
+  playback.seek(Number(controls.progress.value));
+});
+controls.speed.addEventListener("change", () => {
+  playback.setSpeed(Number(controls.speed.value));
+});
+controls.native.addEventListener("click", compareNative);
+window.addEventListener("pagehide", () => {
+  playback.dispose();
+  clearNative();
+});
+window.addEventListener("pageshow", () => {
+  view.render(snapshots[playback.state.cursor], playback.state);
 });
 
-// Case 06: setTimeout을 재귀적으로 중첩 호출하면 브라우저가
-// 지연 시간을 강제로 늘리는(4ms clamping) 시점이 있는가?
-runSetTimeoutNestingBtn.addEventListener("click", () => {
-  printSection("Case 06. setTimeout 중첩 clamping (10회)");
-
-  let count = 0;
-  const start = performance.now();
-
-  function nest() {
-    const elapsed = (performance.now() - start).toFixed(2);
-    print(`nested setTimeout #${count} at +${elapsed}ms`);
-    count += 1;
-    if (count < 10) {
-      setTimeout(nest, 0);
-    }
-  }
-  setTimeout(nest, 0);
-});
-
-clearLogBtn.addEventListener("click", () => {
-  log.textContent = "";
-  callCount = 0;
-});
+selectScenario(selected.id);
